@@ -1,0 +1,20 @@
+{
+  "selected_model": "gradient_boosting",
+  "trained_at": "2026-04-24T13:44:23+00:00",
+  "train_rows": 31,
+  "valid_rows": 21,
+  "scores": {
+    "linear_regression": {
+      "mae": 6189.172738567254,
+      "r2": -2.689556152985641
+    },
+    "random_forest": {
+      "mae": 3154.1945809523804,
+      "r2": -0.049701171234502795
+    },
+    "gradient_boosting": {
+      "mae": 2629.3883759162627,
+      "r2": 0.1820162417631378
+    }
+  }
+}
