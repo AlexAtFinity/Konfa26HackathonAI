@@ -6,6 +6,8 @@ import sys
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 # Streamlit runs this file as a script (not as a package), so relative imports break.
@@ -60,6 +62,20 @@ joined = forecast_df.merge(
     suffixes=("", "_weather"),
 )
 
+WEATHER_ATTR_OPTIONS = {
+    "None": None,
+    "Temp avg": "temp_avg",
+    "Temp max": "temp_max",
+    "Temp min": "temp_min",
+    "Precip total": "precip_total",
+    "Rain": "rain",
+    "Snow": "snow",
+    "Cloud cover": "cloud_cover",
+    "Humidity": "humidity",
+    "Wind speed": "wind_speed",
+    "UV": "uv",
+}
+
 city_options = (
     joined[["city", "state"]]
     .drop_duplicates()
@@ -94,11 +110,54 @@ with left:
 
 with right:
     st.subheader("Predicted sales")
-    fig = px.line(view, x="date", y="sales_amount_pred")
-    fig.update_traces(mode="lines+markers")
+    weather_choice_label = st.selectbox(
+        "Secondary line (weather attribute)",
+        options=list(WEATHER_ATTR_OPTIONS.keys()),
+        index=0,
+        help="Optional weather attribute shown on the right Y-axis.",
+    )
+    weather_col = WEATHER_ATTR_OPTIONS[weather_choice_label]
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(
+        go.Scatter(
+            x=view["date"],
+            y=view["sales_amount_pred"],
+            name="Predicted sales",
+            mode="lines+markers",
+            line=dict(color="#1f77b4"),
+            marker=dict(color="#1f77b4"),
+        ),
+        secondary_y=False,
+    )
+
+    if weather_col:
+        fig.add_trace(
+            go.Scatter(
+                x=view["date"],
+                y=view[weather_col],
+                name=weather_choice_label,
+                mode="lines+markers",
+                line=dict(color="#ff7f0e"),
+                marker=dict(color="#ff7f0e"),
+            ),
+            secondary_y=True,
+        )
+
     fig.update_xaxes(dtick="D1", tickformat="%b. %-d %a", title_text="")
-    fig.update_yaxes(title_text="")
-    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10))
+    fig.update_yaxes(
+        title=dict(text="Predicted sales", font=dict(color="#1f77b4")),
+        secondary_y=False,
+        tickfont=dict(color="#1f77b4"),
+        linecolor="#1f77b4",
+    )
+    fig.update_yaxes(
+        title=dict(text=weather_choice_label if weather_col else "", font=dict(color="#ff7f0e")),
+        secondary_y=True,
+        tickfont=dict(color="#ff7f0e"),
+        linecolor="#ff7f0e",
+    )
+    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h"))
     st.plotly_chart(fig, use_container_width=True)
 
 st.caption(f"Reads `{FORECAST_TABLE}` and `{WEATHER_TABLE}` when in Databricks mode.")
