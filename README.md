@@ -1,54 +1,121 @@
-# Spår A — Avancerad Analys & Data Science
+# Väder möter försäljning (stadnivå, 10 dagar)
 
-Typ av uppgifter: ML, prediktioner, avancerad analys
+Det här projektet kombinerar väder (AccuWeather) och syntetisk retail-data (Simulated Retail Customer Data) i Databricks för att skapa en stadnivå-prognos av försäljning för de kommande 10 dagarna och visa resultatet i en enkel Streamlit-app.
 
-## 1. "Väder möter försäljning"
+## Målbild
 
-Kombinera AccuWeather-data med Simulated Retail Customer Data. Bygg en modell som predicerar hur väder påverkar köpbeteende — temperatur, regn, säsong.  
-Marketplace: AccuWeather + Simulated Retail Customer Data
+För exakt dessa fem städer:
 
-### Levererad MVP
+- Los Angeles, CA
+- Chicago, IL
+- Columbus, OH
+- Jacksonville, FL
+- Portland, OR
 
-Det finns nu en körbar MVP i repot för uppgiften:
+Skapar vi:
 
-- `src/weather_sales_pipeline.py` tränar en modell för att predicera försäljning utifrån väder, säsong och kampanjdata.
-- `app.py` är en enkel Streamlit-app där man justerar väderparametrar och ser predicerad försäljning.
-- Om riktig marketplace-data ännu inte är exporterad skapas en demo-dataset automatiskt som fallback.
+- `city_daily_weather_forecast`: 10 dagars väder (1 rad per `city,state,date`)
+- `city_daily_sales_forecast`: 10 dagars försäljningsprognos (1 rad per `city,state,date`)
+- En Streamlit-app som låter dig välja stad och (valfritt) plotta en vädervariabel på en sekundär Y-axel.
 
-### Kör projektet
+## Lösning (arkitektur)
 
-```bash
-uv sync
-uv run python src/weather_sales_pipeline.py
-uv run streamlit run app.py
+```mermaid
+flowchart LR
+  subgraph DBX[Databricks / Unity Catalog]
+    AWF["samples accuweather forecast (hittad men ej använd)"]
+    AWH["AccuWeather historik (postal codes)"]
+    RET["Simulated Retail Customer Data"]
+
+    SQL[SQL 01-04 + 06]
+    T1[(city_daily_weather_forecast)]
+    T2[(city_daily_weather_history)]
+    T3[(target_city_customers_resolved)]
+    T4[(city_daily_sales_history)]
+    T5[(city_daily_sales_weather_training)]
+    T6[(city_daily_sales_forecast)]
+
+    AWH --> SQL
+    RET --> SQL
+    SQL --> T1
+    SQL --> T2
+    SQL --> T3
+    SQL --> T4
+    SQL --> T5
+  end
+
+  ML[Python: src/city_forecast/ml_forecast.py] --> T6
+  T5 --> ML
+  T1 --> ML
+
+  APP[Streamlit: src/city_forecast/app_forecast.py] --> T6
+  APP --> T1
 ```
 
-### Förväntad indata för riktig träning
+### Viktig notis om forecast-väder
 
-Byt ut demo-datan mot en CSV med följande kolumner:
+Vi hittade en forecast-tabell i `samples.accuweather.forecast_daily_calendar_metric`, men:
 
-`season`, `temperature_c`, `precipitation_mm`, `wind_speed_kmh`, `humidity_pct`, `discount_pct`, `is_weekend`, `is_holiday`, `is_rainy`, `sales_amount`
+- den saknade 4/5 av våra städer, och
+- den var daterad (observerade datum i juli 2024).
 
-## 2. "Diabetes-prediktorn"
+Därför genereras `city_daily_weather_forecast` som en deterministisk proxy-prognos från historisk postal-code-daily data (se `src/city_forecast/docs/forecast_weather_source_notes.md`).
 
-Bygg en ML-pipeline som identifierar riskfaktorer för diabetes. Feature engineering, modellträning, och en enkel webbapp där man matar in hälsovärden och får risknivå.  
-Marketplace: Diabetes Health Indicators
+## Skapade tabeller (UC)
 
-## 3. "Vinkännaren"
+Alla tabeller skapas i schemat:
 
-Analysera Wine Quality Data med ML — vilka kemiska egenskaper gör ett bra vin? Bygg en interaktiv app där man justerar parametrar och ser predicerad kvalitet.  
-Marketplace: Wine Quality Data
+- `fp_hack.alexander_groth_hackathon`
 
-## 4. "Sjukdomskartan"
+Nyckeltabeller:
 
-Visualisera Disease Prevalence Rates geografiskt. Korrelera med demografi från US Cities Demographics. Bygg en interaktiv karta med drill-down.  
-Marketplace: Disease Prevalence Rates + US Cities Demographics
+- `fp_hack.alexander_groth_hackathon.city_daily_weather_forecast`
+- `fp_hack.alexander_groth_hackathon.city_daily_sales_forecast`
 
-## 5. "Supply Chain-optimeraren"
+Mer schema/datakvalitet finns i:
 
-Analysera Supply Chain Inventory and Transport-data. Hitta flaskhalsar, optimera lagernivåer, predicera leveransförseningar. Visualisera som en dashboard.  
-Marketplace: Supply Chain Inventory and Transport
+- `src/city_forecast/docs/schema_documentation.md`
 
-## 6. "FIFO-balansräknaren"
+## Köra projektet
 
-Testa en modell där balansen räknas med FIFO-metoden. Idag krävs 15 mått för att nå resultatet — row context och total context matchar inte på filter. Kan AI lösa det bättre och enklare?
+### 1) Installera dependencies
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv sync
+```
+
+### 2) (Om du vill) kör SQL-skripten i Databricks
+
+SQL-filerna finns i `src/city_forecast/sql/` och körs i ordning:
+
+- `01_city_daily_weather_forecast.sql`
+- `02_city_daily_weather_history.sql`
+- `03_target_city_customers_resolved.sql`
+- `04_city_daily_sales_history.sql`
+- `06_city_daily_sales_weather_training.sql`
+
+### 3) Träna modell och skriv prognostabell
+
+Använd SQL Warehouse-id (exempel): `cfe55031a9b649cb`
+
+```bash
+DATABRICKS_WAREHOUSE_ID=cfe55031a9b649cb UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.city_forecast.ml_forecast --write-databricks
+```
+
+### 4) Starta Streamlit-appen
+
+```bash
+DATABRICKS_WAREHOUSE_ID=cfe55031a9b649cb UV_CACHE_DIR=/tmp/uv-cache uv run streamlit run src/city_forecast/app_forecast.py
+```
+
+## Så använder du appen
+
+- Välj stad i dropdownen.
+- Tabellvyn visar 10 dagar med `sales_amount_pred` och vädernycklar.
+- Grafen visar alltid Predicted sales (blå, vänster Y-axel).
+- Välj Secondary line (weather attribute) för att lägga till en väderkurva (orange, höger Y-axel). Standard är `None`.
+
+## Kända begränsningar
+
+- Träningsmängden är liten (en kort historisk period), vilket gör modellen instabil och metrik svårtolkad.
+- Forecast-väder är proxy (day-of-week-medel per representativt postnummer), inte en riktig prognosfeed.
